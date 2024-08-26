@@ -1,9 +1,6 @@
 <?php
 
-spl_autoload_register(function ($class_name) {
-    include BASE_PATH.'principal'. DIRECTORY_SEPARATOR.$class_name.'.php';
-
-});
+spl_autoload_register('Base::autoload');
         
 if( !defined('BASE_PATH') )
 {
@@ -104,6 +101,12 @@ abstract class Base{
         }
         
         return '';
+    }
+    
+    static function autoload($className){
+        $fileName=dirname(__FILE__).DIRECTORY_SEPARATOR.$className.'.php';
+        if(  !is_string($className) || !file_exists($fileName) )   throw new RuntimeException();
+        require_once $fileName;
     }
     
 }
