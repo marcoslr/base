@@ -98,6 +98,8 @@ abstract class Base{
         
             $html[self::FORBIDDEN]='<html><head><title>Forbidden access</title></head><body><h1>Forbidden access</h1><p>Access to the requested URL '.str_replace(['public/','index.php'],['',''],$_SERVER['PHP_SELF']).' was forbidden on this server.</p></body></html>';
         
+            
+            
         }
         
         $type=(string)$type;
@@ -109,7 +111,7 @@ abstract class Base{
         return '';
     }
     
-    static function autoload($className)
+    private static function autoload($className)
     {
         $fileName=dirname(__FILE__).DIRECTORY_SEPARATOR.$className.'.php';
         if(  !is_string($className) || !file_exists($fileName) )   throw new RuntimeException();
@@ -124,7 +126,7 @@ abstract class Base{
      * @return string the the complete message logged
      * @throws \InvalidArgumentException if bad paremeters were passed (string in $typeMsg, string in $message, string in $rawdata)
      */
-    public static function log( $typeMsg, $message, $rawdata= ''){
+    private static function log( $typeMsg, $message, $rawdata= ''){
         $publicnumber=rand();        
         self::$log->write( strtoupper($typeMsg). ' - ' .$message.' with public number: '.$publicnumber.' '.( $rawdata ? "\n".$rawdata : '' ) );
         header($_SERVER['SERVER_PROTOCOL'] . ' 500 Internal Server Error');
@@ -142,7 +144,7 @@ abstract class Base{
      * @return boolean for a complete or not bypass of PHP engine errors
      * 
      */
-    public static function errorHandler($errno ,$errstr , $errfile , $errline , array $errcontext)
+    private static function errorHandler($errno ,$errstr , $errfile , $errline , array $errcontext)
     {
         $code=$errno;
         switch($errno){
@@ -179,9 +181,19 @@ abstract class Base{
      * @param \Exception $e the original exception info
      * @return void
      */
-    public static function exceptionHandler($e)
+    private static function exceptionHandler($e)
     {
         self::errorHandler( $e->getCode(),$e->getMessage(),$e->getFile(),$e->getLine(), array( $e->getPrevious(), $e->getTraceAsString() ) );
+    }
+    
+    //MAGIC METHODS
+    
+    public static function __callStatic($name, $arguments) {
+        return call_user_func_array(array(get_called_class(), $name),$arguments);
+    }
+
+    public function __call($name, $arguments) {
+        return call_user_func_array(array(get_called_class(), $name),$arguments);
     }
     
 }
