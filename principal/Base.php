@@ -16,7 +16,18 @@ else
 
 abstract class Base{
     
+    const ERROR='errors';
+    const WARNING='warnings';
+    const EXCEPTION='exceptions';
+    const ALERT='alerts';
+    
     const FORBIDDEN='forbidden';
+    
+    private $alerts;//to show on the site web
+    private $errors;
+    private $warnings;
+    private $exceptions;
+   
     
     /**
      * inmediate and basic html response
@@ -39,6 +50,10 @@ abstract class Base{
     
     protected function __construct() 
     {
+        $this->alerts=array();
+        $this->errors=array();
+        $this->warnings=array();
+        $this->exceptions=array();
         
 
     }
@@ -110,6 +125,8 @@ abstract class Base{
         
         return '';
     }
+    
+    //One use utilities
     
     private static function autoload($className)
     {
@@ -185,6 +202,8 @@ abstract class Base{
     {
         self::errorHandler( $e->getCode(),$e->getMessage(),$e->getFile(),$e->getLine(), array( $e->getPrevious(), $e->getTraceAsString() ) );
     }
+    
+    
     
     //MAGIC METHODS
     
