@@ -207,6 +207,27 @@ abstract class Base{
     
     //MAGIC METHODS
     
+    public function __set($name, $value) {
+       $this->{(string)$name}=$value;
+       
+       return $this;
+    }
+    
+    public function __get($name) {
+        return $this->{(string)$name};
+    }
+    //'magic': intend this will be used by controllerds and models, it will we see :-)
+    public function _add($name,$value){
+        $name=(string)$name;
+        if(in_array($name, [self::ERROR,self::WARNING,self::EXCEPTION,self::ALERT] )){
+            
+            $this->$name[]=$value;
+        }
+        
+     return $this;
+        
+    }
+    
     public static function __callStatic($name, $arguments) {
         return call_user_func_array(array(get_called_class(), $name),$arguments);
     }
