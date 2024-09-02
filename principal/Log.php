@@ -1,8 +1,11 @@
 <?php
-if( !defined('MAPAXE_INITIATED_ON') ){
+if( !defined('BASE_PATH') )
+{
     header($_SERVER['SERVER_PROTOCOL'] . ' 403 Forbidden');
-    exit( '<html><head><title>Forbidden access</title></head><body><h1>Forbidden access</h1><p>Access to the requested URL '.str_replace(['public','index.php'],['',''],$_SERVER['PHP_SELF']).' was forbidden on this server.</p></body></html>');
+    
+    exit( 'Acceso no permitido a este archivo.' );
 }
+
 final class Log{
 		
     /**
