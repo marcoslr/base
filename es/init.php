@@ -5,7 +5,7 @@ define( 'BASE_PATH' , dirname(dirname(__FILE__)). DIRECTORY_SEPARATOR );//to pre
 define( 'DS' , DIRECTORY_SEPARATOR );
 include BASE_PATH . DS . 'principal'. DS . 'Base.php';
 
-Core::singleton();
+Base::singleton();
 
 echo '¿Podremos empezar por aquí?';
 
