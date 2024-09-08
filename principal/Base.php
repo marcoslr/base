@@ -1,28 +1,22 @@
 <?php
 
 spl_autoload_register('Base::autoload');
+
         
 if( !defined('BASE_PATH') )
 {
     header($_SERVER['SERVER_PROTOCOL'] . ' 403 Forbidden');
     
-    exit( Base::getHtmlResponse( Base::FORBIDDEN ) );
+    exit( 'Acceso directo no permitido a este directorio desde la web.' );
 }
 else
 {
+    
     set_error_handler('Base::errorHandler');//depends on Log object and config ini file
     set_exception_handler('Base::exceptionHandler');//depends on Log object and config ini file
 }
 
-abstract class Base{
-  
-    
-    /**
-     * inmediate and basic html response
-     * @access private
-     */
-    
-    protected static $htmlResponse=array();
+class Base{
 
     /**
      * this registry singleton instance
@@ -30,20 +24,15 @@ abstract class Base{
      */
     
     protected static $instances=array();
+    
+    
+    
+    protected function __construct( $param=NULL ) {
+        
+    }
 
     
     //Desing pattern methods
-    
-    /**
-     * Avoid this object clonation: issues an E_USER_ERROR if this is attempted
-     * @access public
-     * @return
-     */
-
-    protected function __clone()
-    {
-        trigger_error( 'The clonation of this object is forbidden.', E_USER_ERROR );
-    }
     
     /**
      * singleton access to a this object
@@ -51,7 +40,7 @@ abstract class Base{
      * @return
      */
     
-    public static function singleton()
+    public static function getInstance()
     {
         $obj = get_called_class();
         if( !isset( self::$instances[$obj] ) )
@@ -61,6 +50,8 @@ abstract class Base{
  
         return self::$instances[$obj];
     }
+    
+    
     
     public static function cleanSingleton(){
         $obj = get_called_class();
@@ -79,7 +70,7 @@ abstract class Base{
      * @return string the the complete message logged
      * @throws \InvalidArgumentException if bad paremeters were passed (string in $typeMsg, string in $message, string in $rawdata)
      */
-    private static function log( $typeMsg, $message, $rawdata= ''){
+    protected static function log( $typeMsg, $message, $rawdata= ''){
         
     }
     
@@ -94,7 +85,7 @@ abstract class Base{
      * @return boolean for a complete or not bypass of PHP engine errors
      * 
      */
-    private static function errorHandler($errno ,$errstr , $errfile , $errline , array $errcontext)
+    protected static function errorHandler($errno ,$errstr , $errfile , $errline , array $errcontext)
     {
         
         self::log($typeMsg,$errstr,$rawdata);
@@ -107,7 +98,7 @@ abstract class Base{
      * @param \Exception $e the original exception info
      * @return void
      */
-    private static function exceptionHandler($e)
+    protected static function exceptionHandler($e)
     {
         
     }
@@ -116,32 +107,10 @@ abstract class Base{
      * @param type Base constant
      * @return string the html response or empty string
      */
-
-    public static function getHtmlResponse($type)
-    {
-        $html=&self::$htmlResponse;
-        
-        if( count($html)==0 )
-        {
-        
-            $html[self::FORBIDDEN]='<html><head><title>Forbidden access</title></head><body><h1>Forbidden access</h1><p>Access to the requested URL was forbidden on this server.</p></body></html>';
-        
-            
-            
-        }
-        
-        $type=(string)$type;
-        
-        if( isset($html[$type]) ){
-            return $html[$type];
-        }
-        
-        return '';
-    }
     
         //MAGIC METHODS
     
-    private static function autoload($className)
+    protected static function autoload($className)
     {
         $fileName=dirname(__FILE__).DIRECTORY_SEPARATOR.$className.'.php';
         if(  !is_string($className) || !file_exists($fileName) )   throw new RuntimeException();
@@ -168,5 +137,7 @@ abstract class Base{
         return $this->{(string)$name};
     }
 
-    
+    public static function __callStatic($name, $arguments) {
+        return call_user_func_array(array(get_called_class(), $name),$arguments);
+    }
 }

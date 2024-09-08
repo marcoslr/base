@@ -7,3 +7,4 @@ if( !defined('BASE_PATH') )
     exit( 'Acceso directo no permitido a este directorio desde la web.' );
 }
 
+require_once 'init.php';
