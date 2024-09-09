@@ -49,7 +49,7 @@ class ErrorHandler
         
         $rawdata="TYPE OF ERROR: $errno\nFILE: $errfile\nLINE: $errline\nEXCEPTION CONTEXT VARS: ".  print_r( $errcontext, TRUE );
         
-        $publicnumber=rand();
+        $publicnumber= uniqid();
         $message=strtoupper($typeMsg) . ' - ' . $errstr . ', with public number: '. $publicnumber . ' ' . ( $rawdata ? "\n".$rawdata : '' );
         
         $this->logger->log($message);

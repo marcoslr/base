@@ -14,22 +14,51 @@ class Base{
      */
     
     protected static $instances=array();
-    
-    
+
     protected $config;
+    
+    //Desing pattern methods
+    
+    /**
+     * singleton access to a this object
+     * @access public
+     * @return
+     */
+    
+    public static function getInstance()
+    {
+        $obj = get_called_class();
+        if( !isset( self::$instances[$obj] ) )
+        {
+            self::$instances[$obj] = new $obj;
+        }
+ 
+        return self::$instances[$obj];
+    }
+    
+    
+    
+    public static function cleanSingleton(){
+        $obj = get_called_class();
+        if( isset(self::$instances[$obj]) )
+        {
+            unset( self::$instances[$obj] );
+        }
+    }
     
     protected function __construct( $configFile= __DIR__. DIRECTORY_SEPARATOR . 'config.php' ) {
         // Leer el archivo JSON y convertirlo en un array
-        if (file_exists( $configFile )) {
+        if (file_exists( $configFile )) 
+        {
             $this->autoloader();    
             $this->config = require_once $configFile;
-        } else {
+            $this->setErrorConfigs();
+        } 
+        else 
+        {
             throw new Exception("Base::__construct config file not encountered");
         }
-        
-        $this->setErrorConfigs();
-        
-        
+
     }
     
     protected function setErrorConfigs(){
@@ -37,6 +66,8 @@ class Base{
         $errorConfig=$this->config['error_handling'];
         
         if ( $errorConfig['environment'] === 'development' ) {
+            
+            ini_set('log_errors', 1);
             
             ini_set( 'display_errors', $errorConfig['display_errors'] ? 1 : 0 );
             
@@ -46,6 +77,8 @@ class Base{
         else 
         {
             
+            ini_set('log_errors', 0);
+            
             ini_set( 'display_errors', 0 );
             
             error_reporting(0);
@@ -54,7 +87,7 @@ class Base{
         // Configurar el log de errores
         if ( $errorConfig['log_errors'] ) {
             
-            ini_set('log_errors', 1);
+            
             
             $logsPath=__DIR__ . DIRECTORY_SEPARATOR . $errorConfig['log_file_path'];
             
@@ -126,7 +159,7 @@ class Base{
             while (($file = readdir($gestor)) !== false) {
                 $complete_path = $path . DIRECTORY_SEPARATOR . $file;
                 // Mostramos todos los archivos y directorios excepto "." y ".."
-                if ($file != "." && $file != ".." && !in_array($file , $notDirs )) {
+                if ($file != "." && $file != ".." && $file[0]!='. '&& !in_array($file , $notDirs )) {
 
                     // Si es un directorio se recorre recursivamente
                     if (is_dir($complete_path)) {
@@ -154,45 +187,6 @@ class Base{
     public function getErrorConfig($key, $default = null) {
         return isset($this->config['error_handling'][$key]) ? $this->config[$key] : $default;
     }
-    
-    //Desing pattern methods
-    
-    /**
-     * singleton access to a this object
-     * @access public
-     * @return
-     */
-    
-    public static function getInstance()
-    {
-        $obj = get_called_class();
-        if( !isset( self::$instances[$obj] ) )
-        {
-            self::$instances[$obj] = new $obj;
-        }
- 
-        return self::$instances[$obj];
-    }
-    
-    
-    
-    public static function cleanSingleton(){
-        $obj = get_called_class();
-        if( isset(self::$instances[$obj]) )
-        {
-            unset( self::$instances[$obj] );
-        }
-    }
-
-    
-    /**
-     * 
-     * @param string $typeMsg it will be one of the control constant  of this class, to know what king of error we are dealing with
-     * @param string $message the content of the  error/exception
-     * @param string $rawdata the raw content of the error/exception
-     * @return string the the complete message logged
-     * @throws \InvalidArgumentException if bad paremeters were passed (string in $typeMsg, string in $message, string in $rawdata)
-     */
 
     public function __clone()
     {
@@ -200,9 +194,5 @@ class Base{
     }
 
     // 'magic'
-    
-    public function __get($name) {
-        return $this->{(string)$name};
-    }
 
 }

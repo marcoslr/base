@@ -1,1 +1,397 @@
 
+<?php
+if( !defined('BASE_PATH') )
+{
+    header($_SERVER['SERVER_PROTOCOL'] . ' 403 Forbidden');
+    
+    exit( 'Forbbiden access' );
+}
+
+class Base{
+
+    /**
+     * this registry singleton instance
+     * @access private
+     */
+    
+    protected static $instances=array();
+    
+    
+    protected $config;
+    
+    protected function __construct( $configFile= __DIR__. DIRECTORY_SEPARATOR . 'config.php' ) {
+        // Leer el archivo JSON y convertirlo en un array
+        if (file_exists( $configFile )) {
+            $this->autoloader();    
+            $this->config = require_once $configFile;
+        } else {
+            throw new Exception("Base::__construct config file not encountered");
+        }
+        
+        $this->setErrorConfigs();
+        
+        
+    }
+    
+    protected function setErrorConfigs(){
+        
+        $errorConfig=$this->config['error_handling'];
+        
+        if ( $errorConfig['environment'] === 'development' ) {
+            
+            ini_set( 'display_errors', $errorConfig['display_errors'] ? 1 : 0 );
+            
+            error_reporting( $errorConfig['error_reporting_level'] );
+            
+        } 
+        else 
+        {
+            
+            ini_set( 'display_errors', 0 );
+            
+            error_reporting(0);
+        }
+
+        // Configurar el log de errores
+        if ( $errorConfig['log_errors'] ) {
+            
+            ini_set('log_errors', 1);
+            
+            $logsPath=__DIR__ . DIRECTORY_SEPARATOR . $errorConfig['log_file_path'];
+            
+            ini_set('error_log', $logsPath );
+            
+            $errorHandler = new ErrorHandler( new LogHandler( $logsPath , $errorConfig['log_file_name'] ) );
+
+            set_error_handler([$errorHandler, 'handle']);
+
+            $exceptionHandler = new ExceptionHandler( $errorHandler ); 
+
+            set_exception_handler([$exceptionHandler, 'handle']);
+            
+            $shutdownErrorHandler= new ShutdownErrorHandler( $errorHandler );
+            
+            register_shutdown_function( [$shutdownErrorHandler, 'handle'] );
+            
+        }
+    }
+
+    //var para hacerlo privado y poderlo llamarlo siendo privado
+    protected function autoloader( $notDirs=['nbproject','stuff'] ){
+       
+        $root_path= realpath( dirname(__DIR__) );
+        
+        spl_autoload_register(
+                
+            function( $className ) use ( $root_path, $notDirs ) {
+                $fileFound = false;
+                
+                // Obtener los directorios donde buscar
+                $foldersWhereRequire = self::dirsFrom($root_path, $notDirs);
+
+                // Recorrer cada directorio
+                foreach ($foldersWhereRequire as $folder) {
+
+                    // Construir la ruta del archivo
+                    $fileName = $folder . DIRECTORY_SEPARATOR . $className . '.php';
+
+                    // Si el archivo existe, lo incluimos
+                    if (file_exists($fileName)) {
+                        require_once $fileName;
+                        $fileFound = true;
+                        break; // Detener el bucle una vez que se encuentra e incluye el archivo
+                    }
+ 
+                }
+
+                // Si no se encontró el archivo, podemos manejarlo
+                if (!$fileFound) {
+                    throw new Exception("Loader::autoloader $className class not found.");
+                }
+                
+            });
+
+    }
+    
+    protected static function dirsFrom( $path, $notDirs=[] ){
+        $path= rtrim( (string)$path );
+        // Array para guardar el directorio y los archivos
+        $dirs = [];
+
+        // Se comprueba que realmente sea la ruta de un directorio
+        if (is_dir($path)) {
+            // Abre un gestor de directorios para la ruta indicada
+            $gestor = opendir($path);
+
+            // Recorre todos los elementos del directorio
+            while (($file = readdir($gestor)) !== false) {
+                $complete_path = $path . DIRECTORY_SEPARATOR . $file;
+                // Mostramos todos los archivos y directorios excepto "." y ".."
+                if ($file != "." && $file != ".." && !in_array($file , $notDirs )) {
+
+                    // Si es un directorio se recorre recursivamente
+                    if (is_dir($complete_path)) {
+                        // Añadimos el array (recursivo) del siguiente directorio 
+                        $dirs = array_merge( $dirs, self::dirsFrom($complete_path,$notDirs) );
+                        // Si es un archivo añadimos ruta/archivo al Array
+                    } else {
+                        //$dirs = ['ruta' => $path . DIRECTORY_SEPARATOR, 'archivo' => $file];
+                        if( !in_array($path, $dirs))
+                            $dirs[]= $path;
+                    }
+                }
+            }
+            // Cierra el gestor de directorios
+            closedir($gestor);
+
+        } 
+
+        // Devolvemos el array del directorio actual  
+        return $dirs;
+        
+    }
+    
+    
+    public function getErrorConfig($key, $default = null) {
+        return isset($this->config['error_handling'][$key]) ? $this->config[$key] : $default;
+    }
+    
+    //Desing pattern methods
+    
+    /**
+     * singleton access to a this object
+     * @access public
+     * @return
+     */
+    
+    public static function getInstance()
+    {
+        $obj = get_called_class();
+        if( !isset( self::$instances[$obj] ) )
+        {
+            self::$instances[$obj] = new $obj;
+        }
+ 
+        return self::$instances[$obj];
+    }
+    
+    
+    
+    public static function cleanSingleton(){
+        $obj = get_called_class();
+        if( isset(self::$instances[$obj]) )
+        {
+            unset( self::$instances[$obj] );
+        }
+    }
+
+    
+    /**
+     * 
+     * @param string $typeMsg it will be one of the control constant  of this class, to know what king of error we are dealing with
+     * @param string $message the content of the  error/exception
+     * @param string $rawdata the raw content of the error/exception
+     * @return string the the complete message logged
+     * @throws \InvalidArgumentException if bad paremeters were passed (string in $typeMsg, string in $message, string in $rawdata)
+     */
+
+    public function __clone()
+    {
+        trigger_error( 'The clonation of this object is forbidden.', E_USER_ERROR );
+    }
+
+    // 'magic'
+    
+    public function __get($name) {
+        return $this->{(string)$name};
+    }
+
+}
+
+
+class LogHandler
+{
+    protected $logsPath;
+    protected $logsFilename;
+    protected $date;
+
+    public function __construct( $logsPath, $logsFilename )
+    {
+        $this->logsPath = (string)$logsPath;
+
+        //separate filename and its extension
+        $logsFilename=explode( '.', $logsFilename );
+        
+        $this->logsFilename=$logsFilename[0] . '-' . date('Y-m-d') . '.' .$logsFilename[1];
+
+    }
+
+    //normal methods of Log
+    
+
+    public function log($message)
+    {
+        $date = $this->date = new DateTime();
+        
+        $formattedMessage = "[{$date->format('Y-m-d H:i:s')}] {$message}" . PHP_EOL ;
+        
+        $this->write($formattedMessage);
+    }
+    
+    private function write($message) {
+        
+        $message = (string)$message;
+        
+        
+        $logsPath = $this->logsPath;
+        $log = $logsPath . DIRECTORY_SEPARATOR . $this->logsFilename;
+
+        if (is_dir($logsPath)) {
+            if (!file_exists($log)) {
+                try {
+                    $fh = fopen($log, 'a+') or die("Fatal Error !");
+                    $logcontent = "Time : " . $this->date->format('H:i:s') . "\r\n" . $message . "\r\n";
+                    fwrite($fh, $logcontent);
+                    fclose($fh);
+                } catch (Exception $e) {
+                    throw new RuntimeException( "Log::write EXCEPTION on file ' $log '" , $e->getCode(), $e->getPrevious());
+                }
+            } 
+            else {
+                $this->edit($message);
+            }
+        } else {
+            if (mkdir($logsPath, 0755) === true) {
+                $this->write($message);
+            }
+            else{
+                throw new RuntimeException( "Log::write EXCEPTION on file: ' $log '" );
+            }
+        }
+    }
+
+
+    private function edit($message) {
+        $log = $this->logsPath . DIRECTORY_SEPARATOR . $this->logsFilename;
+        $message=(string)$message;
+        $date=$this->date;
+        try{
+            $logcontent = "Time : " . $date->format('H:i:s')."\r\n" . $message ."\r\n\r\n";
+            $logcontent = $logcontent . file_get_contents($log);
+            file_put_contents($log, $logcontent);
+        }
+        catch(Exception $e){
+            throw new RuntimeException( "Log::edit EXCEPTION on file ' $log '" , $e->getCode(), $e->getPrevious());
+        }
+    }
+}
+
+
+class ErrorHandler
+{
+    protected $logger;
+
+    public function __construct(LogHandler $logger)
+    {
+        $this->logger = $logger;
+    }
+    
+    /**
+     * Ideal manager for the set_error_handler function although it can be called from external
+     * 
+     * @param string $errno error code
+     * @param string $errstr error message
+     * @param string $errfile absolute filename where error became
+     * @param string $errline number of line in the file where script stopped
+     * @param array $errcontext it can be info about the trace or the previous error
+     * @return boolean for a complete or not bypass of PHP engine errors
+     * 
+     */
+    public function handle($errno ,$errstr , $errfile , $errline , array $errcontext=NULL)
+    {
+        $code=$errno;
+        // Se puede personalizar según el tipo de error
+        switch($errno){
+            default:                    
+                $errno="EXCEPTION\nDescription: if no codified by PHP Error level constants, it is an Exception by the php script.";
+                $typeMsg='EXCEPTION';
+                break;
+            case E_ALL:                 $typeMsg='E_ALL';$errno="E_ALL (code $code)\nDescription: All errors and warnings (includes E_STRICT as of PHP 6.0.0)";break;
+            case E_ERROR:               $typeMsg='E_ERROR';$errno="E_ERROR (code $code)\nDescription: fatal run-time errors";break;
+            case E_RECOVERABLE_ERROR:   $typeMsg='E_RECOVERABLE_ERROR';$errno="E_RECOVERABLE_ERROR (code $code)\nDescription: almost fatal run-time errors";break;
+            case E_WARNING:             $typeMsg='E_WARNING';$errno="E_WARNING (code $code)\nDescription: run-time warnings (non-fatal errors)";break;
+            case E_PARSE:               $typeMsg='E_PARSE';$errno="E_PARSE (code $code)\nDescription: compile-time parse errors";break;
+            case E_NOTICE:              $typeMsg='E_NOTICE';$errno="E_NOTICE (code $code)\nDescription: run-time notices (these are warnings which often result from a bug in your code, but it's possible that it was intentional (e.g., using an uninitialized variable and relying on the fact it's automatically initialized to an empty string)";break;
+            case E_STRICT:              $typeMsg='E_STRICT';$errno="E_STRICT (code $code)\nDescription: run-time notices, enable to have PHP suggest changes to your code which will ensure the best interoperability and forward compatibility of your code";break;
+            case E_CORE_ERROR:          $typeMsg='E_CORE_ERROR';$errno="E_CORE_ERROR (code $code)\nDescription: fatal errors that occur during PHP's initial startup";break;
+            case E_CORE_WARNING:        $typeMsg='E_CORE_WARNING';$errno="E_CORE_WARNING (code $code)\nDescription: warnings (non-fatal errors) that occur during PHP's initial startup";break;
+            case E_COMPILE_ERROR:       $typeMsg='E_COMPILE_ERROR';$errno="E_COMPILE_ERROR (code $code)\nDescription: fatal compile-time errors";break;
+            case E_COMPILE_WARNING:     $typeMsg='E_COMPILE_WARNING';$errno="E_COMPILE_WARNING (code $code)\nDescription: compile-time warnings (non-fatal errors)";break;
+            case E_USER_ERROR:          $typeMsg='E_USER_ERROR';$errno="E_USER_ERROR (code $code)\nDescription: user-generated error message";break;
+            case E_USER_WARNING:        $typeMsg='E_USER_WARNING';$errno="E_USER_WARNING (code $code)\nDescription: user-generated warning message";break;
+            case E_USER_NOTICE:         $typeMsg='E_USER_NOTICE';$errno="E_USER_NOTICE (code $code)\nDescription:  user-generated notice message";break;
+            case E_DEPRECATED:          $typeMsg='E_DEPRECATED';$errno="E_DEPRECATED (code $code)\nDescription: warn about code that will not work in future versions of PHP";break;
+            
+        }
+        
+        $rawdata="TYPE OF ERROR: $errno\nFILE: $errfile\nLINE: $errline\nEXCEPTION CONTEXT VARS: ".  print_r( $errcontext, TRUE );
+        
+        $publicnumber=rand();
+        $message=strtoupper($typeMsg) . ' - ' . $errstr . ', with public number: '. $publicnumber . ' ' . ( $rawdata ? "\n".$rawdata : '' );
+        
+        $this->logger->log($message);
+        
+        header($_SERVER['SERVER_PROTOCOL'] . ' 500 Internal Server Error');
+        exit( '<html><head><title>Internal Server Error</title></head><body><h1>Internal Server Error</h1><p>Log error Identificator Number: <pre><strong>'.$publicnumber.'</strong></pre></p></body></html>' );
+        
+        return TRUE; // Evita que PHP maneje el error por defecto en el caso de que llegase hasta aqui en algun momento
+    }
+    
+    
+}
+
+
+class ExceptionHandler
+{
+    protected $handler;
+
+    public function __construct($handler)
+    {
+        $this->handler = $handler;
+    }
+
+    public function handle($e)
+    {
+        $this->handler->handle( $e->getCode(),$e->getMessage(),$e->getFile(),$e->getLine(), array( $e->getPrevious(), $e->getTraceAsString() ) );
+        
+        return TRUE;
+
+    }
+}
+
+
+class ShutdownErrorHandler{
+    
+    protected $handler;
+
+    public function __construct($handler)
+    {
+        $this->handler = $handler;
+    }
+
+    public function handle()
+    {
+        $e = error_get_last();
+        if( $e ){
+            $this->handler->handle( $e['type'], $e['message'], $e['file'], $e['line'] );
+        }
+        
+        return TRUE;
+
+    }
+    
+}
+
+Base::getInstance();
+
+echo '¿Podremos empezar por aquí?';
