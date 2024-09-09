@@ -1,19 +1,9 @@
 <?php
-
-spl_autoload_register('Base::autoload');
-
-        
 if( !defined('BASE_PATH') )
 {
     header($_SERVER['SERVER_PROTOCOL'] . ' 403 Forbidden');
     
-    exit( 'Acceso directo no permitido a este directorio desde la web.' );
-}
-else
-{
-    
-    set_error_handler('Base::errorHandler');//depends on Log object and config ini file
-    set_exception_handler('Base::exceptionHandler');//depends on Log object and config ini file
+    exit( 'Forbbiden access' );
 }
 
 class Base{
@@ -26,11 +16,144 @@ class Base{
     protected static $instances=array();
     
     
+    protected $config;
     
-    protected function __construct( $param=NULL ) {
+    protected function __construct( $configFile= __DIR__. DIRECTORY_SEPARATOR . 'config.php' ) {
+        // Leer el archivo JSON y convertirlo en un array
+        if (file_exists( $configFile )) {
+            $this->autoloader();    
+            $this->config = require_once $configFile;
+        } else {
+            throw new Exception("Base::__construct config file not encountered");
+        }
+        
+        $this->setErrorConfigs();
+        
         
     }
+    
+    protected function setErrorConfigs(){
+        
+        $errorConfig=$this->config['error_handling'];
+        
+        if ( $errorConfig['environment'] === 'development' ) {
+            
+            ini_set( 'display_errors', $errorConfig['display_errors'] ? 1 : 0 );
+            
+            error_reporting( $errorConfig['error_reporting_level'] );
+            
+        } 
+        else 
+        {
+            
+            ini_set( 'display_errors', 0 );
+            
+            error_reporting(0);
+        }
 
+        // Configurar el log de errores
+        if ( $errorConfig['log_errors'] ) {
+            
+            ini_set('log_errors', 1);
+            
+            $logsPath=__DIR__ . DIRECTORY_SEPARATOR . $errorConfig['log_file_path'];
+            
+            ini_set('error_log', $logsPath );
+            
+            $errorHandler = new ErrorHandler( new LogHandler( $logsPath , $errorConfig['log_file_name'] ) );
+
+            set_error_handler([$errorHandler, 'handle']);
+
+            $exceptionHandler = new ExceptionHandler( $errorHandler ); 
+
+            set_exception_handler([$exceptionHandler, 'handle']);
+            
+            $shutdownErrorHandler= new ShutdownErrorHandler( $errorHandler );
+            
+            register_shutdown_function( [$shutdownErrorHandler, 'handle'] );
+            
+        }
+    }
+
+    //var para hacerlo privado y poderlo llamarlo siendo privado
+    protected function autoloader( $notDirs=['nbproject','stuff'] ){
+       
+        $root_path= realpath( dirname(__DIR__) );
+        
+        spl_autoload_register(
+                
+            function( $className ) use ( $root_path, $notDirs ) {
+                $fileFound = false;
+                
+                // Obtener los directorios donde buscar
+                $foldersWhereRequire = self::dirsFrom($root_path, $notDirs);
+
+                // Recorrer cada directorio
+                foreach ($foldersWhereRequire as $folder) {
+
+                    // Construir la ruta del archivo
+                    $fileName = $folder . DIRECTORY_SEPARATOR . $className . '.php';
+
+                    // Si el archivo existe, lo incluimos
+                    if (file_exists($fileName)) {
+                        require_once $fileName;
+                        $fileFound = true;
+                        break; // Detener el bucle una vez que se encuentra e incluye el archivo
+                    }
+ 
+                }
+
+                // Si no se encontró el archivo, podemos manejarlo
+                if (!$fileFound) {
+                    throw new Exception("Loader::autoloader $className class not found.");
+                }
+                
+            });
+
+    }
+    
+    protected static function dirsFrom( $path, $notDirs=[] ){
+        $path= rtrim( (string)$path );
+        // Array para guardar el directorio y los archivos
+        $dirs = [];
+
+        // Se comprueba que realmente sea la ruta de un directorio
+        if (is_dir($path)) {
+            // Abre un gestor de directorios para la ruta indicada
+            $gestor = opendir($path);
+
+            // Recorre todos los elementos del directorio
+            while (($file = readdir($gestor)) !== false) {
+                $complete_path = $path . DIRECTORY_SEPARATOR . $file;
+                // Mostramos todos los archivos y directorios excepto "." y ".."
+                if ($file != "." && $file != ".." && !in_array($file , $notDirs )) {
+
+                    // Si es un directorio se recorre recursivamente
+                    if (is_dir($complete_path)) {
+                        // Añadimos el array (recursivo) del siguiente directorio 
+                        $dirs = array_merge( $dirs, self::dirsFrom($complete_path,$notDirs) );
+                        // Si es un archivo añadimos ruta/archivo al Array
+                    } else {
+                        //$dirs = ['ruta' => $path . DIRECTORY_SEPARATOR, 'archivo' => $file];
+                        if( !in_array($path, $dirs))
+                            $dirs[]= $path;
+                    }
+                }
+            }
+            // Cierra el gestor de directorios
+            closedir($gestor);
+
+        } 
+
+        // Devolvemos el array del directorio actual  
+        return $dirs;
+        
+    }
+    
+    
+    public function getErrorConfig($key, $default = null) {
+        return isset($this->config['error_handling'][$key]) ? $this->config[$key] : $default;
+    }
     
     //Desing pattern methods
     
@@ -60,62 +183,7 @@ class Base{
             unset( self::$instances[$obj] );
         }
     }
-    
-    //Utilities methods
-    /**
-     * 
-     * @param string $typeMsg it will be one of the control constant  of this class, to know what king of error we are dealing with
-     * @param string $message the content of the  error/exception
-     * @param string $rawdata the raw content of the error/exception
-     * @return string the the complete message logged
-     * @throws \InvalidArgumentException if bad paremeters were passed (string in $typeMsg, string in $message, string in $rawdata)
-     */
-    protected static function log( $typeMsg, $message, $rawdata= ''){
-        
-    }
-    
-    /**
-     * manager for the set_error_handler function although it can be called from external
-     * 
-     * @param string $errno error code
-     * @param string $errstr error message
-     * @param string $errfile absolute filename where error became
-     * @param string $errline number of line in the file where script stopped
-     * @param array $errcontext it can be info about the trace or the previous error
-     * @return boolean for a complete or not bypass of PHP engine errors
-     * 
-     */
-    protected static function errorHandler($errno ,$errstr , $errfile , $errline , array $errcontext)
-    {
-        
-        self::log($typeMsg,$errstr,$rawdata);
 
-    }
-    
-    /**
-     *  manager for the set_exception_handler function although it can be called from external
-     * 
-     * @param \Exception $e the original exception info
-     * @return void
-     */
-    protected static function exceptionHandler($e)
-    {
-        
-    }
-    /**
-     * 
-     * @param type Base constant
-     * @return string the html response or empty string
-     */
-    
-        //MAGIC METHODS
-    
-    protected static function autoload($className)
-    {
-        $fileName=dirname(__FILE__).DIRECTORY_SEPARATOR.$className.'.php';
-        if(  !is_string($className) || !file_exists($fileName) )   throw new RuntimeException();
-        require_once $fileName;
-    }
     
     /**
      * 
@@ -137,7 +205,4 @@ class Base{
         return $this->{(string)$name};
     }
 
-    public static function __callStatic($name, $arguments) {
-        return call_user_func_array(array(get_called_class(), $name),$arguments);
-    }
 }
